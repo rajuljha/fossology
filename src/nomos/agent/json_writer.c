@@ -10,14 +10,46 @@
 #include "nomos_utils.h"
 #include <json-c/json.h>
 
+static void writeHighlightInfoToJson(GArray* theMatches, json_object *resultsArray) {
+    int currentLicence;
+    for (currentLicence = 0; currentLicence < theMatches->len; ++currentLicence) {
+      LicenceAndMatchPositions* theLicence = getLicenceAndMatchPositions(theMatches, currentLicence);
+
+      int highl;
+      for (highl = 0; highl < theLicence->matchPositions->len; ++highl) {
+        MatchPositionAndType* ourMatchv = getMatchfromHighlightInfo(theLicence->matchPositions, highl);
+        json_object *result = json_object_new_object();
+        json_object_object_add(result, "license", json_object_new_string(theLicence->licenceName));
+        json_object_object_add(result, "start", json_object_new_int(ourMatchv->start));
+        json_object_object_add(result, "end", json_object_new_int(ourMatchv->end));
+        json_object_object_add(result, "len", json_object_new_int(ourMatchv->end - ourMatchv->start));
+        json_object_array_add(resultsArray, result);
+      }
+    }
+}
+
 void writeJson()
 {
   char realPathOfTarget[PATH_MAX];
   json_object *result = json_object_new_object();
   json_object *licenses = json_object_new_array();
+  json_object *resultsArray = json_object_new_array();
   json_object *fileLocation = NULL;
   json_object *aLicense = NULL;
   size_t i = 0;
+
+  // Debug print statements
+  printf("cur.theMatches length: %d\n", cur.theMatches->len);
+  for (int j = 0; j < cur.theMatches->len; ++j) {
+    LicenceAndMatchPositions* licence = getLicenceAndMatchPositions(cur.theMatches, j);
+    printf("Licence #%d name: %s\n", j, licence->licenceName);
+    printf("Number of match positions: %d\n", licence->matchPositions->len);
+    printf("Number of indexList Values: %d\n", licence->indexList->len);
+    for (int k = 0; k < licence->matchPositions->len; ++k) {
+      MatchPositionAndType* match = getMatchfromHighlightInfo(licence->matchPositions, k);
+      printf("Match #%d: start = %d, end = %d, index = %d\n", k, match->start, match->end, match->index);
+    }
+  }
 
   parseLicenseList();
   while (cur.licenseList[i] != NULL)
@@ -27,6 +59,9 @@ void writeJson()
     json_object_array_add(licenses, aLicense);
     ++i;
   }
+  
+  writeHighlightInfoToJson(cur.theMatches, resultsArray);
+
   if (optionIsSet(OPTS_LONG_CMD_OUTPUT)
       && realpath(cur.targetFile, realPathOfTarget))
   {
@@ -38,6 +73,8 @@ void writeJson()
   }
   json_object_object_add(result, "file", fileLocation);
   json_object_object_add(result, "licenses", licenses);
+  json_object_object_add(result, "results", resultsArray);
+
   char *prettyJson = unescapePathSeparator(
     json_object_to_json_string_ext(result, JSON_C_TO_STRING_PRETTY));
   sem_wait(mutexJson);
